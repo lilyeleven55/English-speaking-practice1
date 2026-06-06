@@ -1,16 +1,15 @@
 """
-语法纠错辅助模块 —— 基于规则检测常见 ESL 错误并给出修正建议。
-
-原创贡献：错误模式库、纠错提示文案生成逻辑。
+Grammar checker module - detects common ESL errors and provides correction suggestions.
 """
 
 import re
 from dataclasses import dataclass, field
+from typing import List, Optional, Dict
 
 
 @dataclass
 class GrammarIssue:
-    """单条语法问题记录。"""
+    """Single grammar issue record."""
     original: str
     suggestion: str
     explanation: str
@@ -19,13 +18,13 @@ class GrammarIssue:
 
 @dataclass
 class GrammarResult:
-    """语法检查结果。"""
-    issues: list[GrammarIssue] = field(default_factory=list)
+    """Grammar check result."""
+    issues: List[GrammarIssue] = field(default_factory=list)
     error_count: int = 0
     has_errors: bool = False
     original_text: str = ""
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> Dict:
         return {
             "has_errors": self.has_errors,
             "error_count": self.error_count,
@@ -42,96 +41,95 @@ class GrammarResult:
         }
 
 
-# (pattern, replacement, explanation, severity)
-_GRAMMAR_RULES: list[tuple[str, str, str, str]] = [
+_GRAMMAR_RULES = [
     (
         r"\bI\s+are\b",
         "I am",
-        "'I' 应搭配 'am'，不能用 'are'。",
+        "I should use 'am', not 'are'.",
         "high",
     ),
     (
         r"\bI\s+is\b",
         "I am",
-        "'I' 应搭配 'am'，不能用 'is'。",
+        "I should use 'am', not 'is'.",
         "high",
     ),
     (
         r"\b(he|she|it)\s+don't\b",
         r"\1 doesn't",
-        "第三人称单数应使用 'doesn't'。",
+        "Third person singular should use 'doesn't'.",
         "high",
     ),
     (
         r"\b(he|she|it)\s+are\b",
         r"\1 is",
-        "第三人称单数应使用 'is'。",
+        "Third person singular should use 'is'.",
         "high",
     ),
     (
         r"\b(they|we|you)\s+is\b",
         r"\1 are",
-        "复数主语应使用 'are'。",
+        "Plural subjects should use 'are'.",
         "high",
     ),
     (
         r"\ba\s+([aeiouAEIOU]\w+)\b",
         r"an \1",
-        "元音开头的单词前应使用 'an'。",
+        "Use 'an' before vowel sounds.",
         "medium",
     ),
     (
         r"\ban\s+([^aeiouAEIOU\s]\w+)\b",
         r"a \1",
-        "辅音开头的单词前应使用 'a'。",
+        "Use 'a' before consonant sounds.",
         "medium",
     ),
     (
         r"\bdon't\s+no\b",
         "don't know",
-        "双重否定在标准英语中应避免。",
+        "Double negatives should be avoided.",
         "medium",
     ),
     (
         r"\bmore\s+better\b",
         "better",
-        "'better' 本身已是比较级，不需要 'more'。",
+        "'better' is already comparative, no need for 'more'.",
         "medium",
     ),
     (
         r"\bvery\s+unique\b",
         "unique",
-        "'unique' 表示独一无二，通常不与 'very' 连用。",
+        "'unique' means one of a kind, not used with 'very'.",
         "low",
     ),
     (
         r"\bgo\s+to\s+home\b",
         "go home",
-        "'home' 作副词时不需要 'to'。",
+        "'home' as adverb doesn't need 'to'.",
         "medium",
     ),
     (
         r"\bmake\s+a\s+photo\b",
         "take a photo",
-        "拍照应说 'take a photo'，不是 'make a photo'。",
+        "Use 'take a photo' instead of 'make a photo'.",
         "medium",
     ),
     (
         r"\bexplain\s+me\b",
         "explain to me",
-        "'explain' 后需要加 'to' 再接人称代词。",
+        "'explain' needs 'to' before pronoun.",
         "medium",
     ),
     (
         r"\bdiscuss\s+about\b",
         "discuss",
-        "'discuss' 本身已含 'about' 之意，无需再加。",
+        "'discuss' already includes 'about' meaning.",
         "low",
     ),
     (
         r"\bhow\s+much\s+persons\b",
         "how many people",
-        "询问人数应使用 'how many people'。",
+        "Use 'how many people' for counting people.",
         "medium",
     ),
 ]
@@ -139,13 +137,13 @@ _GRAMMAR_RULES: list[tuple[str, str, str, str]] = [
 
 def check_grammar(text: str) -> GrammarResult:
     """
-    检测文本中的常见语法错误。
+    Detect common grammar errors in text.
 
     Args:
-        text: 用户输入的英文句子。
+        text: User's English input.
 
     Returns:
-        GrammarResult 包含发现的问题列表。
+        GrammarResult containing detected issues.
     """
     result = GrammarResult()
     result.original_text = text
@@ -200,17 +198,16 @@ def check_grammar(text: str) -> GrammarResult:
     return result
 
 
-def build_correction_message(result: GrammarResult) -> str | None:
-    """将语法检查结果格式化为用户可读的纠错提示。"""
+def build_correction_message(result: GrammarResult) -> Optional[str]:
+    """Format grammar check result as user-readable message."""
     if not result.has_errors:
         return None
 
-    lines = ["📝 **Grammar Tips:**"]
+    lines = ["[Grammar Tips]"]
     for i, issue in enumerate(result.issues[:3], 1):
         lines.append(
-            f"{i}. 「{issue.original}」→ 「{issue.suggestion}」"
-            f" — {issue.explanation}"
+            f"{i}. [{issue.original}] -> [{issue.suggestion}] - {issue.explanation}"
         )
     if result.error_count > 3:
-        lines.append(f"   ...还有 {result.error_count - 3} 处可改进的地方。")
+        lines.append(f"Plus {result.error_count - 3} more suggestions.")
     return "\n".join(lines)

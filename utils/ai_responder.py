@@ -19,18 +19,18 @@ from utils.grammar_checker import GrammarResult, build_correction_message, check
 from utils.scenarios import get_scenario
 
 ENCOURAGEMENT_MESSAGES = [
-    "加油，已经很接近了！再试一次，你可以的！💪",
-    "别灰心，学习语言就是这样一步步来的，继续保持！🌟",
-    "进步是需要时间的，你已经在正确的路上了！👏",
-    "很棒的努力！每个错误都是学习的机会，再来一句吧！✨",
+    "加油，已经很接近了！再试一次，你可以的！",
+    "别灰心，学习语言就是这样一步步来的，继续保持！",
+    "进步是需要时间的，你已经在正确的路上了！",
+    "很棒的努力！每个错误都是学习的机会，再来一句吧！",
     "You're doing great! Mistakes help us learn faster. Keep going!",
 ]
 
 POSITIVE_FEEDBACK = [
-    "Well said! Your English sounds natural. 👍",
-    "Perfect! No grammar issues spotted. 🎉",
-    "Great job! That was clear and correct. ✨",
-    "Excellent! You're getting the hang of this. 🌟",
+    "Well said! Your English sounds natural.",
+    "Perfect! No grammar issues spotted.",
+    "Great job! That was clear and correct.",
+    "Excellent! You're getting the hang of this.",
 ]
 
 ENCOURAGEMENT_THRESHOLD = 2
@@ -96,8 +96,10 @@ def call_llm_api(
     user_message: str,
     scenario_id: str,
     conversation_history: list[dict] | None = None,
-    goals: list = None,
+    goals: list | None = None,
     goal_progress: int = 0,
+    custom_persona: str | None = None,
+    custom_scenario_name: str | None = None,
 ) -> str | None:
     """
     调用智谱 GLM API 生成回复。
@@ -109,13 +111,26 @@ def call_llm_api(
     """
     api_key = os.environ.get("ZHIPU_API_KEY")
     if not api_key:
-        print("⚠️ ZHIPU_API_KEY 未设置，使用模板模式")
+        print("[WARN] ZHIPU_API_KEY 未设置，使用模板模式")
         return None
     
-    print(f"✅ ZHIPU_API_KEY 已设置: {api_key[:10]}...")
+    print(f"[OK] ZHIPU_API_KEY 已设置: {api_key[:10]}...")
 
     try:
-        scenario = get_scenario(scenario_id)
+        if scenario_id == 'custom' and custom_persona:
+            scenario = {
+                "id": "custom",
+                "name": custom_scenario_name or "Custom",
+                "name_en": custom_scenario_name or "Custom",
+                "persona": custom_persona,
+                "goals": [],
+                "goal_keywords": {},
+                "keywords": [],
+                "responses": [],
+                "hints": [],
+            }
+        else:
+            scenario = get_scenario(scenario_id)
         
         messages = []
         
@@ -145,14 +160,14 @@ def call_llm_api(
             }
         )
         
-        print(f"📤 请求发送中...")
+        print("[INFO] 请求发送中...")
         with urllib.request.urlopen(req, timeout=30) as response:
             result = json.loads(response.read().decode("utf-8"))
-            print(f"✅ API 响应成功")
+            print("[OK] API 响应成功")
             return result["choices"][0]["message"]["content"]
     
     except urllib.error.HTTPError as e:
-        print(f"❌ HTTP 错误 {e.code}: {e.reason}")
+        print(f"[ERROR] HTTP 错误 {e.code}: {e.reason}")
         try:
             error_body = e.read().decode("utf-8")
             print(f"错误详情: {error_body}")
@@ -160,7 +175,7 @@ def call_llm_api(
             pass
         return None
     except Exception as e:
-        print(f"❌ LLM API 错误: {type(e).__name__}: {e}")
+        print(f"[ERROR] LLM API 错误: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -202,11 +217,27 @@ def generate_response(
     scenario_id: str,
     state: SessionState,
     conversation_history: list[dict] | None = None,
+    custom_persona: str | None = None,
+    custom_scenario_name: str | None = None,
 ) -> ChatResponse:
     """
     生成完整的 AI 回复（自然回应 + 纠错 + 鼓励）。
     """
-    scenario = get_scenario(scenario_id)
+    if scenario_id == 'custom' and custom_persona:
+        scenario = {
+            "id": "custom",
+            "name": custom_scenario_name or "Custom",
+            "name_en": custom_scenario_name or "Custom",
+            "persona": custom_persona,
+            "goals": [],
+            "goal_keywords": {},
+            "keywords": [],
+            "responses": [],
+            "hints": [],
+        }
+    else:
+        scenario = get_scenario(scenario_id)
+    
     grammar_result: GrammarResult = check_grammar(user_message)
     state.total_messages += 1
 
@@ -224,7 +255,9 @@ def generate_response(
         scenario_id, 
         conversation_history,
         goals,
-        state.goal_progress
+        state.goal_progress,
+        custom_persona,
+        custom_scenario_name
     )
     
     if api_reply:
@@ -238,9 +271,6 @@ def generate_response(
     if state.consecutive_errors >= ENCOURAGEMENT_THRESHOLD:
         encouragement = random.choice(ENCOURAGEMENT_MESSAGES)
         state.consecutive_errors = 0
-
-    if not grammar_result.has_errors and random.random() < 0.35:
-        natural_reply = f"{natural_reply}"
 
     return ChatResponse(
         reply=natural_reply,

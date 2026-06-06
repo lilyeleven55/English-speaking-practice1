@@ -14,7 +14,7 @@ AI 英语口语陪练 —— Flask 主应用入口。
 import os
 import sqlite3
 import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -189,33 +189,48 @@ def api_chat():
         message (str): 用户英文输入
         scenario_id (str): 场景 ID，默认 restaurant
         history (list): 对话历史 [{role, content}, ...]
+        custom_persona (str, optional): 自定义场景AI角色
+        custom_scenario_name (str, optional): 自定义场景名称
     
     响应 JSON:
         reply, correction, encouragement, grammar, scenario_id, goal_progress
     """
-    data = request.get_json(silent=True) or {}
-    user_message = (data.get("message") or "").strip()
+    try:
+        data = request.get_json(silent=True) or {}
+        user_message = (data.get("message") or "").strip()
 
-    if not user_message:
-        return jsonify({"error": "Message cannot be empty."}), 400
+        if not user_message:
+            return jsonify({"error": "Message cannot be empty."}), 400
 
-    scenario_id = data.get("scenario_id", DEFAULT_SCENARIO)
-    history = data.get("history", [])
+        scenario_id = data.get("scenario_id", DEFAULT_SCENARIO)
+        history = data.get("history", [])
+        custom_persona = data.get("custom_persona")
+        custom_scenario_name = data.get("custom_scenario_name")
 
-    state = _get_session_state()
-    state.scenario_id = scenario_id
+        state = _get_session_state()
+        state.scenario_id = scenario_id
 
-    response = generate_response(
-        user_message=user_message,
-        scenario_id=scenario_id,
-        state=state,
-        conversation_history=history,
-    )
+        response = generate_response(
+            user_message=user_message,
+            scenario_id=scenario_id,
+            state=state,
+            conversation_history=history,
+            custom_persona=custom_persona,
+            custom_scenario_name=custom_scenario_name,
+        )
 
-    has_errors = response.grammar.get("has_errors", False)
-    _update_practice_record(_get_user_id(), scenario_id, has_errors)
+        has_errors = response.grammar.get("has_errors", False)
+        try:
+            _update_practice_record(_get_user_id(), scenario_id, has_errors)
+        except Exception as db_error:
+            print(f"⚠️ 数据库更新警告: {db_error}")
 
-    return jsonify(response.to_dict())
+        return jsonify(response.to_dict())
+    except Exception as e:
+        print(f"❌ API 错误: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error", "reply": "Sorry, something went wrong. Please try again!"}), 500
 
 
 @app.route("/api/reset", methods=["POST"])
@@ -235,17 +250,30 @@ def api_reset():
 @app.route("/api/stats", methods=["GET"])
 def api_stats():
     """获取用户练习统计数据。"""
-    user_id = _get_user_id()
-    
-    today_stats = _get_today_stats(user_id)
-    total_stats = _get_total_stats(user_id)
-    
-    return jsonify({
-        "today": today_stats,
-        "total": total_stats
-    })
+    try:
+        user_id = _get_user_id()
+        
+        today_stats = _get_today_stats(user_id)
+        total_stats = _get_total_stats(user_id)
+        
+        return jsonify({
+            "today": today_stats,
+            "total": total_stats
+        })
+    except Exception as e:
+        print(f"⚠️ 统计数据错误: {e}")
+        return jsonify({
+            "today": {"today_messages": 0, "today_errors": 0, "today_accuracy": 0},
+            "total": {"total_messages": 0, "total_errors": 0, "total_accuracy": 0}
+        })
 
 
 if __name__ == "__main__":
-    init_db()
+    # 确保数据库在启动时初始化
+    try:
+        init_db()
+        print("[OK] 数据库初始化成功")
+    except Exception as e:
+        print(f"[WARN] 数据库初始化警告: {e}")
+    
     app.run(debug=True, host="127.0.0.1", port=5000)
