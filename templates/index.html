@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 英语口语陪练 | English Speaking Coach</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部标题栏 -->
+        <header class="header">
+            <div class="header-left">
+                <span class="logo">🎙️</span>
+                <div>
+                    <h1>AI 英语口语陪练</h1>
+                    <p class="subtitle">English Speaking Coach</p>
+                </div>
+            </div>
+            <button id="btn-reset" class="btn-reset" title="清空对话">↺ 重置</button>
+        </header>
+
+        <!-- 场景切换区 -->
+        <section class="scenarios" id="scenario-bar">
+            <!-- 由 JS 动态填充 -->
+        </section>
+
+        <!-- 聊天消息区 -->
+        <main class="chat-area" id="chat-area">
+            <div class="welcome-card" id="welcome-card">
+                <h2>👋 Welcome!</h2>
+                <p>选择一个场景，用英文和 AI 陪练对话吧。</p>
+                <p class="hint">AI 会自然回应你的句子，并给出语法纠错建议。</p>
+            </div>
+        </main>
+
+        <!-- 输入区 -->
+        <footer class="input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="user-input"
+                    placeholder="Type your English here... (按 Enter 发送，Shift+Enter 换行)"
+                    rows="1"
+                    autofocus
+                ></textarea>
+                <button id="btn-send" class="btn-send" title="发送">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                    </svg>
+                </button>
+            </div>
+            <p class="input-hint">试试故意写错语法，看看 AI 如何纠错和鼓励你 ✨</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
