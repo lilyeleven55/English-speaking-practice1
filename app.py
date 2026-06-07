@@ -446,7 +446,7 @@ def api_vocabulary_export():
         writer.writerow(["单词", "释义", "例句", "来源"])
         for r in rows:
             writer.writerow([r[0], r[1], r[2], r[3]])
-        content = output.getvalue()
+        content = '\ufeff' + output.getvalue()
         response = app.response_class(content, mimetype="text/csv; charset=utf-8")
         response.headers["Content-Disposition"] = "attachment; filename=vocabulary.csv"
         return response
