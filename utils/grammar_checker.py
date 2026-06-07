@@ -682,36 +682,64 @@ def _resolve_special_suggestion(
 
 def _suggest_digit_fix(original: str) -> str:
     """数字代替字母的拼写修复。"""
-    digit_map = {
-        "0": ["o", "O"],
-        "1": ["l", "i", "I"],
-        "3": ["e", "E"],
-        "4": ["a", "A"],
-        "5": ["s", "S"],
-        "7": ["t", "T"],
-        "8": ["b", "B"],
+    # 基础数字->字母映射（只保留小写）
+    _digit_to_lower = {
+        "0": "o",
+        "1": ["l", "i"],
+        "3": "e",
+        "4": "a",
+        "5": "s",
+        "7": "t",
+        "8": "b",
     }
+    
     word = original.strip()
+    
+    # 判断原始单词的大小写模式
+    is_all_upper = word.isupper()
+    is_title_case = word[0].isupper() and word[1:].islower() if len(word) > 1 else word[0].isupper()
+    is_all_lower = word.islower()
+    
+    def apply_case(candidate: str) -> str:
+        """根据原始单词的大小写模式调整候选词。"""
+        if is_all_upper:
+            return candidate.upper()
+        elif is_title_case:
+            return candidate.capitalize() if candidate else candidate
+        else:
+            # 默认小写
+            return candidate.lower()
 
     def generate(word_str: str, idx: int = 0) -> List[str]:
         if idx >= len(word_str):
             return [word_str]
         ch = word_str[idx]
-        if ch in digit_map:
+        if ch in _digit_to_lower:
             results = []
-            for rep in digit_map[ch]:
-                results.extend(generate(word_str[:idx] + rep + word_str[idx + 1 :], idx + 1))
+            replacements = _digit_to_lower[ch]
+            if isinstance(replacements, str):
+                replacements = [replacements]
+            for rep in replacements:
+                # 使用小写形式生成候选词
+                results.extend(generate(word_str[:idx] + rep + word_str[idx + 1:], idx + 1))
             results.extend(generate(word_str, idx + 1))
             return results
         return generate(word_str, idx + 1)
 
     try:
-        for candidate in set(generate(word)):
-            if len(candidate) > 2 and not unknown([candidate.lower()]):
-                return candidate
+        # 生成所有候选词并按原始大小写调整
+        candidates = set(generate(word))
+        
+        # 优先查找匹配原始大小写模式的候选词
+        for candidate in candidates:
+            adjusted = apply_case(candidate)
+            if len(adjusted) > 2 and not unknown([adjusted.lower()]):
+                return adjusted
+        
+        # 备选：使用 correction 函数的默认替换（强制小写）
         similar = correction(word.replace("0", "o").replace("1", "i").replace("3", "e"))
         if similar:
-            return similar
+            return apply_case(similar)
     except Exception:
         pass
     return original
