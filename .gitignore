@@ -26,3 +26,6 @@ Thumbs.db
 instance/
 .webassets-cache
 practice.db
+
+# Word list cache
+utils/.cache/
