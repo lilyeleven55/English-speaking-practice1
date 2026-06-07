@@ -601,23 +601,209 @@ body {
     margin-bottom: 8px;
 }
 
+.vocab-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.vocab-header h4 {
+    margin-bottom: 0;
+}
+
+.vocab-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.vocab-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.vocab-btn:hover {
+    background: var(--primary-light);
+    border-color: var(--primary);
+}
+
 .wrong-words-list {
     background: var(--surface);
     border-radius: 8px;
     padding: 8px;
-    max-height: 150px;
+    max-height: 250px;
     overflow-y: auto;
 }
 
-.wrong-word-item {
-    padding: 6px 8px;
+.vocab-item {
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+}
+
+.vocab-item:last-child {
+    border-bottom: none;
+}
+
+.vocab-word {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+    margin-bottom: 2px;
+}
+
+.vocab-def {
     font-size: 12px;
     color: var(--text);
+    margin-bottom: 2px;
+}
+
+.vocab-example {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: italic;
+    margin-bottom: 4px;
+}
+
+.vocab-item-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.vocab-edit-btn, .vocab-delete-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 12px;
+    opacity: 0.5;
+    transition: opacity 0.2s;
+}
+
+.vocab-edit-btn:hover, .vocab-delete-btn:hover {
+    opacity: 1;
+}
+
+/* 生词本弹窗 */
+.vocab-modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    animation: fadeIn 0.15s ease;
+}
+
+.vocab-modal {
+    background: var(--surface);
+    border-radius: 12px;
+    width: 90%;
+    max-width: 420px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.vocab-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
     border-bottom: 1px solid var(--border);
 }
 
-.wrong-word-item:last-child {
-    border-bottom: none;
+.vocab-modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.vocab-modal-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--text-muted);
+}
+
+.vocab-modal form {
+    padding: 16px 20px;
+}
+
+.vocab-modal form label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-top: 12px;
+    margin-bottom: 4px;
+}
+
+.vocab-modal form label:first-child {
+    margin-top: 0;
+}
+
+.vocab-modal form input,
+.vocab-modal form textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--bg);
+    color: var(--text);
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.vocab-modal form input:focus,
+.vocab-modal form textarea:focus {
+    border-color: var(--primary);
+}
+
+.vocab-modal-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.vocab-modal-actions .btn-primary {
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: opacity 0.2s;
+}
+
+.vocab-modal-actions .btn-primary:hover { opacity: 0.9; }
+
+.vocab-modal-actions button[type="button"] {
+    background: none;
+    border: 1px solid var(--border);
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-muted);
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .empty-message {

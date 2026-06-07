@@ -206,7 +206,7 @@ def check_grammar(text: str) -> GrammarResult:
         if len(word) < 3:
             continue
         correction_word = correction(word)
-        if correction_word and correction_word != word:
+        if correction_word:
             result.issues.append(
                 GrammarIssue(
                     original=word,

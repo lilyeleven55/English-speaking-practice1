@@ -45,7 +45,6 @@
             longestStreak: 0,
             lastDate: null,
             records: {},
-            wrongWords: [],
             badges: []
         };
     }
@@ -73,6 +72,11 @@
                 if (streak.currentStreak > streak.longestStreak) {
                     streak.longestStreak = streak.currentStreak;
                 }
+                if (!streak.records[streak.lastDate] || (streak.records[streak.lastDate] && streak.records[streak.lastDate].messages === 0)) {
+                    streak.records[streak.lastDate] = { messages: 1, errors: 0, duration: 0, checkedIn: true };
+                }
+            } else if (diffDays > 1) {
+                streak.currentStreak = 1;
             } else {
                 streak.currentStreak = 1;
             }
@@ -83,8 +87,22 @@
             streak.records[today] = { messages: 0, errors: 0, duration: 0 };
         }
         
+        _repairStreakConsistency(streak);
         saveStreakData(streak);
         updateStreakUI();
+    }
+
+    function _repairStreakConsistency(streak) {
+        if (streak.currentStreak >= 2 && streak.lastDate) {
+            const date = new Date(streak.lastDate);
+            for (let i = 1; i < streak.currentStreak; i++) {
+                date.setDate(date.getDate() - 1);
+                const dateStr = date.toISOString().split('T')[0];
+                if (!streak.records[dateStr] || (streak.records[dateStr] && streak.records[dateStr].messages === 0)) {
+                    streak.records[dateStr] = { messages: 1, errors: 0, duration: 0, checkedIn: true };
+                }
+            }
+        }
     }
 
     function updateStreakUI() {
@@ -102,11 +120,11 @@
     }
 
     function addWrongWord(word) {
-        const streak = loadStreakData();
-        if (!streak.wrongWords.includes(word.toLowerCase())) {
-            streak.wrongWords.push(word.toLowerCase());
-            saveStreakData(streak);
-        }
+        fetch('/api/vocabulary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word: word.toLowerCase(), source: '练习' })
+        }).then(() => renderVocabulary()).catch(() => {});
     }
 
     function triggerEasterEgg(type) {
@@ -268,7 +286,7 @@
     }
 
     async function sendMessage(text = null) {
-        const userText = text || userInput.value.trim();
+        const userText = (typeof text === 'string' ? text : null) || userInput.value.trim();
         if (!userText || isSending) return;
 
         isSending = true;
@@ -383,7 +401,7 @@
             showBadgeNotification('🔥 连续打卡7天！');
         }
         
-        if (streak.wrongWords.length >= 20 && !streak.badges.includes('vocab_master')) {
+        if (_vocabCache.length >= 20 && !streak.badges.includes('vocab_master')) {
             streak.badges.push('vocab_master');
             showBadgeNotification('📖 收集20个生词！');
         }
@@ -636,7 +654,7 @@
                 </div>
                 <div class="quick-stats">
                     <div class="quick-stat">
-                        <span class="quick-value">${loadStreakData().wrongWords.length}</span>
+                        <span class="quick-value" id="vocab-count">0</span>
                         <span class="quick-label">生词本</span>
                     </div>
                     <div class="quick-stat">
@@ -653,7 +671,14 @@
                     <div id="badges-grid" class="badges-grid"></div>
                 </div>
                 <div class="wrong-words-section">
-                    <h4>📖 生词本</h4>
+                    <div class="vocab-header">
+                        <h4>📖 生词本</h4>
+                        <div class="vocab-actions">
+                            <button id="btn-add-vocab" class="vocab-btn" title="添加生词">➕</button>
+                            <button id="btn-export-csv" class="vocab-btn" title="导出CSV">📥</button>
+                            <button id="btn-export-txt" class="vocab-btn" title="导出TXT">📄</button>
+                        </div>
+                    </div>
                     <div id="wrong-words-list" class="wrong-words-list"></div>
                 </div>
             </div>
@@ -666,9 +691,17 @@
         document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
         document.getElementById('btn-create-pk').addEventListener('click', createPKRoom);
         document.getElementById('btn-join-pk').addEventListener('click', joinPKRoom);
+        
+        const btnAddVocab = document.getElementById('btn-add-vocab');
+        if (btnAddVocab) btnAddVocab.addEventListener('click', () => showAddVocabModal());
+        const btnExportCsv = document.getElementById('btn-export-csv');
+        if (btnExportCsv) btnExportCsv.addEventListener('click', () => exportVocab('csv'));
+        const btnExportTxt = document.getElementById('btn-export-txt');
+        if (btnExportTxt) btnExportTxt.addEventListener('click', () => exportVocab('txt'));
+        
         renderCalendar();
         renderBadges();
-        renderWrongWords();
+        renderVocabulary();
         initPKSession();
     }
     
@@ -827,6 +860,7 @@
         }
         
         let completedDays = 0;
+        let activeDays = 0;
         for (let i = 1; i <= lastDay.getDate(); i++) {
             const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
             const record = streak.records[dateStr];
@@ -838,11 +872,12 @@
             
             if (isToday) className += ' today';
             if (record) {
+                activeDays++;
                 if (record.messages >= 5) {
                     className += ' completed';
                     emoji = '✅';
                     completedDays++;
-                } else if (record.messages > 0) {
+                } else if (record.messages > 0 || record.checkedIn) {
                     className += ' partial';
                     emoji = '⚡';
                 }
@@ -853,7 +888,7 @@
         }
         
         html += '</div>';
-        html += `<div class="calendar-summary">本月打卡 ${completedDays}/${lastDay.getDate()} 天</div>`;
+        html += `<div class="calendar-summary">本月活跃 ${activeDays} 天（完成 ${completedDays} 天）</div>`;
         calendar.innerHTML = html;
     }
 
@@ -880,29 +915,176 @@
         badgesGrid.innerHTML = html;
     }
 
-    function renderWrongWords() {
+    let _vocabCache = [];
+
+    async function renderVocabulary() {
         const list = document.getElementById('wrong-words-list');
-        const streak = loadStreakData();
-        
-        if (streak.wrongWords.length === 0) {
-            list.innerHTML = '<p class="empty-message">暂无生词，继续练习！</p>';
+        if (!list) return;
+
+        try {
+            const res = await fetch('/api/vocabulary');
+            _vocabCache = await res.json();
+        } catch (e) {
+            console.error('Failed to load vocabulary:', e);
+        }
+
+        updateVocabCount();
+
+        if (_vocabCache.length === 0) {
+            list.innerHTML = '<p class="empty-message">暂无生词，继续练习或手动添加！</p>';
             return;
         }
-        
+
         let html = '';
-        streak.wrongWords.slice(0, 10).forEach(word => {
-            html += `<div class="wrong-word-item">${word}</div>`;
+        _vocabCache.forEach(item => {
+            html += `
+                <div class="vocab-item" data-id="${item.id}">
+                    <div class="vocab-word">${escapeHtml(item.word)}</div>
+                    ${item.definition ? `<div class="vocab-def">${escapeHtml(item.definition)}</div>` : ''}
+                    ${item.example ? `<div class="vocab-example">"${escapeHtml(item.example)}"</div>` : ''}
+                    <div class="vocab-item-actions">
+                        <button class="vocab-edit-btn" onclick="editVocabWord(${item.id})" title="编辑">✏️</button>
+                        <button class="vocab-delete-btn" onclick="deleteVocabWord(${item.id})" title="删除">🗑️</button>
+                    </div>
+                </div>`;
         });
-        
-        if (streak.wrongWords.length > 10) {
-            html += `<p class="more-words">还有 ${streak.wrongWords.length - 10} 个生词...</p>`;
-        }
-        
+
         list.innerHTML = html;
     }
 
+    function updateVocabCount() {
+        const countEl = document.getElementById('vocab-count');
+        if (countEl) countEl.textContent = _vocabCache.length;
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function showAddVocabModal(word = '') {
+        const modal = document.createElement('div');
+        modal.className = 'vocab-modal-overlay';
+        modal.innerHTML = `
+            <div class="vocab-modal">
+                <div class="vocab-modal-header">
+                    <h3>添加生词</h3>
+                    <button class="vocab-modal-close" onclick="this.closest('.vocab-modal-overlay').remove()">✕</button>
+                </div>
+                <form onsubmit="submitAddVocab(event, this)">
+                    <label>单词 *</label>
+                    <input type="text" name="word" value="${escapeHtml(word)}" required placeholder="如: beautiful">
+                    <label>释义</label>
+                    <input type="text" name="definition" placeholder="如: 美丽的">
+                    <label>例句</label>
+                    <textarea name="example" rows="2" placeholder="如: The view is beautiful."></textarea>
+                    <label>来源</label>
+                    <input type="text" name="source" placeholder="如: 练习/手动添加">
+                    <div class="vocab-modal-actions">
+                        <button type="submit" class="btn-primary">保存</button>
+                        <button type="button" onclick="this.closest('.vocab-modal-overlay').remove()">取消</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        setTimeout(() => modal.querySelector('input[name="word"]').focus(), 100);
+    }
+
+    async function submitAddVocab(e, form) {
+        e.preventDefault();
+        const data = {
+            word: form.word.value.trim(),
+            definition: form.definition.value.trim(),
+            example: form.example.value.trim(),
+            source: form.source.value.trim()
+        };
+        try {
+            const res = await fetch('/api/vocabulary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                form.closest('.vocab-modal-overlay').remove();
+                renderVocabulary();
+            }
+        } catch (err) {
+            alert('保存失败: ' + err.message);
+        }
+    }
+
+    async function editVocabWord(id) {
+        const item = _vocabCache.find(v => v.id === id);
+        if (!item) return;
+
+        const modal = document.createElement('div');
+        modal.className = 'vocab-modal-overlay';
+        modal.innerHTML = `
+            <div class="vocab-modal">
+                <div class="vocab-modal-header">
+                    <h3>编辑生词</h3>
+                    <button class="vocab-modal-close" onclick="this.closest('.vocab-modal-overlay').remove()">✕</button>
+                </div>
+                <form onsubmit="submitEditVocab(event, this, ${id})">
+                    <label>单词 *</label>
+                    <input type="text" name="word" value="${escapeHtml(item.word)}" required>
+                    <label>释义</label>
+                    <input type="text" name="definition" value="${escapeHtml(item.definition || '')}" placeholder="如: 美丽的">
+                    <label>例句</label>
+                    <textarea name="example" rows="2" placeholder="如: The view is beautiful.">${escapeHtml(item.example || '')}</textarea>
+                    <label>来源</label>
+                    <input type="text" name="source" value="${escapeHtml(item.source || '')}" placeholder="如: 练习/手动添加">
+                    <div class="vocab-modal-actions">
+                        <button type="submit" class="btn-primary">保存</button>
+                        <button type="button" onclick="this.closest('.vocab-modal-overlay').remove()">取消</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    async function submitEditVocab(e, form, id) {
+        e.preventDefault();
+        const data = {
+            word: form.word.value.trim(),
+            definition: form.definition.value,
+            example: form.example.value,
+            source: form.source.value
+        };
+        try {
+            const res = await fetch(`/api/vocabulary/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                form.closest('.vocab-modal-overlay').remove();
+                renderVocabulary();
+            }
+        } catch (err) {
+            alert('更新失败: ' + err.message);
+        }
+    }
+
+    async function deleteVocabWord(id) {
+        if (!confirm('确定删除这个生词吗？')) return;
+        try {
+            const res = await fetch(`/api/vocabulary/${id}`, { method: 'DELETE' });
+            if (res.ok) renderVocabulary();
+        } catch (err) {
+            alert('删除失败: ' + err.message);
+        }
+    }
+
+    function exportVocab(format) {
+        window.open(`/api/vocabulary/export?format=${format}`, '_blank');
+    }
+
     function bindEvents() {
-        btnSend.addEventListener("click", sendMessage);
+        btnSend.addEventListener("click", () => sendMessage());
 
         userInput.addEventListener("keydown", (e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -1005,6 +1187,11 @@
         appendMessage("ai", opening);
         conversationHistory.push({ role: "assistant", content: opening });
     }
+
+    window.submitAddVocab = submitAddVocab;
+    window.submitEditVocab = submitEditVocab;
+    window.editVocabWord = editVocabWord;
+    window.deleteVocabWord = deleteVocabWord;
 
     init();
     initCustomScenario();

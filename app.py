@@ -58,6 +58,19 @@ def init_db():
         )
     """)
     
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS vocabulary (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            word TEXT NOT NULL,
+            definition TEXT DEFAULT '',
+            example TEXT DEFAULT '',
+            source TEXT DEFAULT '',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
+    
     conn.commit()
     conn.close()
 
@@ -266,6 +279,182 @@ def api_stats():
             "today": {"today_messages": 0, "today_errors": 0, "today_accuracy": 0},
             "total": {"total_messages": 0, "total_errors": 0, "total_accuracy": 0}
         })
+
+
+@app.route("/api/vocabulary", methods=["GET", "POST"])
+def api_vocabulary():
+    try:
+        user_id = _get_user_id()
+        
+        if request.method == "GET":
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            
+            search = (request.args.get("search") or "").strip().lower()
+            if search:
+                cursor.execute(
+                    "SELECT id, word, definition, example, source, created_at FROM vocabulary WHERE user_id = ? AND LOWER(word) LIKE ? ORDER BY created_at DESC",
+                    (user_id, f"%{search}%")
+                )
+            else:
+                cursor.execute(
+                    "SELECT id, word, definition, example, source, created_at FROM vocabulary WHERE user_id = ? ORDER BY created_at DESC",
+                    (user_id,)
+                )
+            rows = cursor.fetchall()
+            conn.close()
+            return jsonify([{
+                "id": r[0], "word": r[1], "definition": r[2],
+                "example": r[3], "source": r[4], "created_at": r[5]
+            } for r in rows])
+        
+        data = request.get_json(silent=True) or {}
+        word = (data.get("word") or "").strip()
+        if not word or len(word) > 100:
+            return jsonify({"error": "Word is required and must be <= 100 chars"}), 400
+        
+        definition = (data.get("definition") or "").strip()[:500]
+        example = (data.get("example") or "").strip()[:1000]
+        source = (data.get("source") or "").strip()[:100]
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id FROM vocabulary WHERE user_id = ? AND LOWER(word) = ?",
+            (user_id, word.lower())
+        )
+        existing = cursor.fetchone()
+        if existing:
+            conn.close()
+            return jsonify({"error": "Word already exists", "id": existing[0]}), 409
+        
+        cursor.execute(
+            "INSERT INTO vocabulary (user_id, word, definition, example, source) VALUES (?, ?, ?, ?, ?)",
+            (user_id, word, definition, example, source)
+        )
+        vid = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        return jsonify({"id": vid, "word": word, "definition": definition, "example": example, "source": source})
+    except Exception as e:
+        print(f"[ERROR] Vocabulary API: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error"}), 500
+
+
+@app.route("/api/vocabulary/<int:vid>", methods=["PUT", "DELETE"])
+def api_vocabulary_item(vid):
+    try:
+        user_id = _get_user_id()
+        
+        if request.method == "DELETE":
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM vocabulary WHERE id = ? AND user_id = ?", (vid, user_id))
+            deleted = cursor.rowcount
+            conn.commit()
+            conn.close()
+            if deleted == 0:
+                return jsonify({"error": "Not found"}), 404
+            return jsonify({"ok": True})
+        
+        data = request.get_json(silent=True) or {}
+        word = (data.get("word") or "").strip()
+        definition = (data.get("definition") or "").strip()[:500]
+        example = (data.get("example") or "").strip()[:1000]
+        source = (data.get("source") or "").strip()[:100]
+        
+        if not word or len(word) > 100:
+            return jsonify({"error": "Word is required and must be <= 100 chars"}), 400
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id FROM vocabulary WHERE user_id = ? AND LOWER(word) = ? AND id != ?",
+            (user_id, word.lower(), vid)
+        )
+        duplicate = cursor.fetchone()
+        if duplicate:
+            conn.close()
+            return jsonify({"error": "Word already exists", "id": duplicate[0]}), 409
+        
+        cursor.execute(
+            "UPDATE vocabulary SET word = ?, definition = ?, example = ?, source = ? WHERE id = ? AND user_id = ?",
+            (word, definition, example, source, vid, user_id)
+        )
+        updated = cursor.rowcount
+        conn.commit()
+        conn.close()
+        
+        if updated == 0:
+            return jsonify({"error": "Not found"}), 404
+        return jsonify({"id": vid, "word": word, "definition": definition, "example": example})
+    except Exception as e:
+        print(f"[ERROR] Vocabulary Item API: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Server error"}), 500
+
+
+@app.route("/api/vocabulary/export", methods=["GET"])
+def api_vocabulary_export():
+    try:
+        import csv
+        from io import StringIO
+        
+        fmt = request.args.get("format", "csv").lower()
+        if fmt not in ("csv", "txt"):
+            return jsonify({"error": "Format must be 'csv' or 'txt'"}), 400
+        
+        user_id = _get_user_id()
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT word, definition, example, source FROM vocabulary WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,)
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        
+        if not rows:
+            return app.response_class(
+                "No vocabulary data to export.",
+                mimetype="text/plain; charset=utf-8"
+            )
+        
+        if fmt == "txt":
+            lines = []
+            for r in rows:
+                line = r[0]
+                if r[1]:
+                    line += f" — {r[1]}"
+                if r[2]:
+                    line += f"\n  例: {r[2]}"
+                lines.append(line)
+            content = "\n".join(lines)
+            response = app.response_class(content, mimetype="text/plain; charset=utf-8")
+            response.headers["Content-Disposition"] = "attachment; filename=vocabulary.txt"
+            return response
+        
+        output = StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["单词", "释义", "例句", "来源"])
+        for r in rows:
+            writer.writerow([r[0], r[1], r[2], r[3]])
+        content = output.getvalue()
+        response = app.response_class(content, mimetype="text/csv; charset=utf-8")
+        response.headers["Content-Disposition"] = "attachment; filename=vocabulary.csv"
+        return response
+    except Exception as e:
+        print(f"[ERROR] Vocabulary Export: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Export failed"}), 500
 
 
 if __name__ == "__main__":
