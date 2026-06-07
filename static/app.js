@@ -1241,7 +1241,7 @@
         const toggle = document.getElementById('todo-toggle');
         
         panel.classList.toggle('collapsed');
-        toggle.textContent = panel.classList.contains('collapsed') ? '◀' : '▶';
+        toggle.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
     }
     
     let pkSession = null;
