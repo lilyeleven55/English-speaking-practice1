@@ -280,12 +280,18 @@ body {
 }
 
 .sidebar-toggle {
-    background: none;
+    background: rgba(79, 110, 247, 0.1);
     border: none;
     cursor: pointer;
     font-size: 14px;
-    color: var(--text-muted);
+    color: var(--primary);
     padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.sidebar-toggle:hover {
+    background: rgba(79, 110, 247, 0.2);
 }
 
 .sidebar-content {
@@ -1681,6 +1687,7 @@ body {
 
 .todo-header {
     display: flex;
+    flex-direction: row-reverse;
     align-items: center;
     justify-content: space-between;
     padding: 16px;

@@ -940,7 +940,7 @@
         sidebar.innerHTML = `
             <div class="sidebar-header">
                 <h3>📊 My Progress</h3>
-                <button id="sidebar-toggle" class="sidebar-toggle">▶</button>
+                <button id="sidebar-toggle" class="sidebar-toggle">◀</button>
             </div>
             <div class="sidebar-content">
                 <div class="pk-section">
@@ -1013,8 +1013,8 @@
         
         rightPanel.innerHTML = `
             <div class="todo-header">
-                <button id="todo-toggle" class="todo-toggle">◀</button>
                 <h3>📝 To Do List</h3>
+                <button id="todo-toggle" class="todo-toggle">◀</button>
             </div>
             <div class="todo-content">
                 <div class="todo-stats">
@@ -1340,7 +1340,7 @@
         const sidebar = document.getElementById('sidebar');
         const toggle = document.getElementById('sidebar-toggle');
         sidebar.classList.toggle('collapsed');
-        toggle.innerHTML = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+        toggle.innerHTML = sidebar.classList.contains('collapsed') ? '◀' : '▶';
     }
 
     function renderCalendar() {
