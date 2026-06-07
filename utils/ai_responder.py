@@ -123,6 +123,7 @@ def call_llm_api(
                 "name": custom_scenario_name or "Custom",
                 "name_en": custom_scenario_name or "Custom",
                 "persona": custom_persona,
+                "description": "Custom user-defined scenario",
                 "goals": [],
                 "goal_keywords": {},
                 "keywords": [],
@@ -188,10 +189,20 @@ def _pick_scenario_response(user_message: str, scenario: dict) -> str:
     responses = scenario.get("responses", [])
 
     matched = [kw for kw in keywords if kw in lower]
-    if matched:
+    if matched and responses:
         return random.choice(responses)
 
-    return random.choice(responses)
+    if responses:
+        return random.choice(responses)
+    
+    default_responses = [
+        "That's interesting! Tell me more.",
+        "Could you elaborate on that?",
+        "I see. What do you think about this?",
+        "That's a good point. Let's continue.",
+        "I understand. Please go on.",
+    ]
+    return random.choice(default_responses)
 
 
 def _check_goal_progress(user_message: str, scenario: dict, current_progress: int) -> int:

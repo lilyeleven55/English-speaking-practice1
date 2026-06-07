@@ -14,6 +14,7 @@ class GrammarIssue:
     suggestion: str
     explanation: str
     severity: str = "medium"  # low | medium | high
+    level: str = "format"  # format | word | grammar
 
 
 @dataclass
@@ -33,8 +34,9 @@ class GrammarResult:
                 {
                     "original": i.original,
                     "suggestion": i.suggestion,
-                    "explanation": i.explanation,
+                    "description": i.explanation,
                     "severity": i.severity,
+                    "level": i.level,
                 }
                 for i in self.issues
             ],
@@ -135,6 +137,24 @@ _GRAMMAR_RULES = [
 ]
 
 
+COMMON_WORDS = {
+    "fine", "good", "great", "happy", "sad", "tired", "hungry", "thirsty",
+    "hello", "hi", "goodbye", "thanks", "please", "sorry",
+    "yes", "no", "maybe", "perhaps",
+    "eat", "drink", "sleep", "walk", "run", "talk", "think", "wait",
+    "go", "come", "take", "give", "make", "do", "have", "be",
+    "a", "an", "the", "this", "that", "these", "those",
+    "i", "you", "he", "she", "it", "we", "they",
+    "my", "your", "his", "her", "its", "our", "their",
+    "is", "are", "was", "were", "am", "been", "being",
+    "can", "could", "will", "would", "should", "may", "might", "must",
+    "in", "on", "at", "by", "for", "of", "to", "from", "with", "without",
+    "and", "but", "or", "so", "because", "if", "when", "while", "although",
+    "what", "who", "which", "where", "when", "why", "how",
+    "tomorrow", "yesterday", "today", "restaurant", "schedule"
+}
+
+
 def check_grammar(text: str) -> GrammarResult:
     """
     Detect common grammar errors in text.
@@ -161,12 +181,14 @@ def check_grammar(text: str) -> GrammarResult:
                     pattern, replacement, original, count=1, flags=re.IGNORECASE
                 )
 
+            level = "grammar" if severity == "high" else "word"
             result.issues.append(
                 GrammarIssue(
                     original=original,
                     suggestion=suggested,
                     explanation=explanation,
                     severity=severity,
+                    level=level,
                 )
             )
 
@@ -177,8 +199,9 @@ def check_grammar(text: str) -> GrammarResult:
             GrammarIssue(
                 original=stripped[0],
                 suggestion=stripped[0].upper(),
-                explanation="英文句子开头应大写。",
+                explanation=f"首字母 {stripped[0]} 需要大写 → {stripped[0].upper()}",
                 severity="low",
+                level="format",
             )
         )
 
@@ -188,14 +211,237 @@ def check_grammar(text: str) -> GrammarResult:
             GrammarIssue(
                 original="(句末)",
                 suggestion=".",
-                explanation="完整句子建议以句号、问号或感叹号结尾。",
+                explanation="句尾补充句号",
                 severity="low",
+                level="format",
             )
         )
 
+    # 检测可能的拼写错误（基于常见单词列表）
+    words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
+    for word in words:
+        if len(word) >= 3 and word not in COMMON_WORDS:
+            suggestions = _get_spelling_suggestions(word)
+            if suggestions and suggestions[0] != word:
+                result.issues.append(
+                    GrammarIssue(
+                        original=word,
+                        suggestion=suggestions[0],
+                        explanation=f"{word} 可能拼写错误，正确单词：{', '.join(suggestions)}",
+                        severity="medium",
+                        level="word",
+                    )
+                )
+
     result.error_count = len(result.issues)
     result.has_errors = result.error_count > 0
+    
     return result
+
+
+def _get_spelling_suggestions(word: str) -> list:
+    """Get spelling suggestions for a word."""
+    suggestions = []
+    word_lower = word.lower()
+    
+    common_mistakes = {
+        "fin": ["fine", "find", "finch"],
+        "teh": ["the"],
+        "wht": ["what"],
+        "hw": ["how"],
+        "u": ["you"],
+        "r": ["are"],
+        "ur": ["your", "you're"],
+        "dont": ["don't"],
+        "cant": ["can't"],
+        "wont": ["won't"],
+        "couldnt": ["couldn't"],
+        "wouldnt": ["wouldn't"],
+        "shouldnt": ["shouldn't"],
+        "isnt": ["isn't"],
+        "arent": ["aren't"],
+        "wasnt": ["wasn't"],
+        "werent": ["weren't"],
+        "hasnt": ["hasn't"],
+        "havent": ["haven't"],
+        "hadnt": ["hadn't"],
+        "didnt": ["didn't"],
+        "doesnt": ["doesn't"],
+        "neednt": ["needn't"],
+        "dnt": ["don't"],
+        "cnt": ["can't"],
+        "wanna": ["want to"],
+        "gonna": ["going to"],
+        "gotta": ["got to"],
+        "kinda": ["kind of"],
+        "sorta": ["sort of"],
+        "alot": ["a lot"],
+        "neighbor": ["neighbour"],
+        "color": ["colour"],
+        "center": ["centre"],
+        "traveler": ["traveller"],
+        "favorite": ["favourite"],
+        "honor": ["honour"],
+        "labor": ["labour"],
+        "theater": ["theatre"],
+        "meter": ["metre"],
+        "program": ["programme"],
+        "catalog": ["catalogue"],
+        "dialog": ["dialogue"],
+        "cigarette": ["cigarette"],
+        "accommodation": ["accommodation"],
+        "calendar": ["calendar"],
+        "committee": ["committee"],
+        "definitely": ["definitely"],
+        "environment": ["environment"],
+        "friend": ["friend"],
+        "government": ["government"],
+        "immediately": ["immediately"],
+        "magnificent": ["magnificent"],
+        "necessary": ["necessary"],
+        "occasion": ["occasion"],
+        "separate": ["separate"],
+        "successful": ["successful"],
+        "temperature": ["temperature"],
+        "vacuum": ["vacuum"],
+        "weather": ["weather"],
+        "whether": ["whether"],
+        "yesterday": ["yesterday"],
+        "tommorow": ["tomorrow"],
+        "resturant": ["restaurant"],
+        "schedule": ["schedule"],
+        "receipt": ["receipt"],
+        "achieve": ["achieve"],
+        "believe": ["believe"],
+        "conceive": ["conceive"],
+        "deceive": ["deceive"],
+        "perceive": ["perceive"],
+        "piece": ["piece"],
+        "peace": ["peace"],
+        "advice": ["advice"],
+        "advise": ["advise"],
+        "affect": ["affect"],
+        "effect": ["effect"],
+        "complement": ["complement"],
+        "compliment": ["compliment"],
+        "principal": ["principal"],
+        "principle": ["principle"],
+        "stationary": ["stationary"],
+        "stationery": ["stationery"],
+        "ensure": ["ensure"],
+        "insure": ["insure"],
+        "assure": ["assure"],
+        "accept": ["accept"],
+        "except": ["except"],
+        "access": ["access"],
+        "excess": ["excess"],
+        "adapt": ["adapt"],
+        "adopt": ["adopt"],
+        "adept": ["adept"],
+        "bare": ["bare"],
+        "bear": ["bear"],
+        "brake": ["brake"],
+        "break": ["break"],
+        "buy": ["buy"],
+        "by": ["by"],
+        "cell": ["cell"],
+        "sell": ["sell"],
+        "cent": ["cent"],
+        "sent": ["sent"],
+        "scent": ["scent"],
+        "chord": ["chord"],
+        "cord": ["cord"],
+        "cite": ["cite"],
+        "site": ["site"],
+        "sight": ["sight"],
+        "clothes": ["clothes"],
+        "cloths": ["cloths"],
+        "compliment": ["compliment"],
+        "complement": ["complement"],
+        "council": ["council"],
+        "counsel": ["counsel"],
+        "desert": ["desert"],
+        "dessert": ["dessert"],
+        "device": ["device"],
+        "devise": ["devise"],
+        "die": ["die"],
+        "dye": ["dye"],
+        "emigrate": ["emigrate"],
+        "immigrate": ["immigrate"],
+        "fair": ["fair"],
+        "fare": ["fare"],
+        "hear": ["hear"],
+        "here": ["here"],
+        "hole": ["hole"],
+        "whole": ["whole"],
+        "lead": ["lead"],
+        "led": ["led"],
+        "loan": ["loan"],
+        "lone": ["lone"],
+        "lose": ["lose"],
+        "loose": ["loose"],
+        "passed": ["passed"],
+        "past": ["past"],
+        "peace": ["peace"],
+        "piece": ["piece"],
+        "plain": ["plain"],
+        "plane": ["plane"],
+        "practice": ["practice"],
+        "practise": ["practise"],
+        "presence": ["presence"],
+        "presents": ["presents"],
+        "quiet": ["quiet"],
+        "quite": ["quite"],
+        "right": ["right"],
+        "write": ["write"],
+        "rite": ["rite"],
+        "road": ["road"],
+        "rode": ["rode"],
+        "rowed": ["rowed"],
+        "scene": ["scene"],
+        "seen": ["seen"],
+        "seam": ["seam"],
+        "seem": ["seem"],
+        "shear": ["shear"],
+        "sheer": ["sheer"],
+        "soar": ["soar"],
+        "sore": ["sore"],
+        "stair": ["stair"],
+        "stare": ["stare"],
+        "steel": ["steel"],
+        "steal": ["steal"],
+        "tail": ["tail"],
+        "tale": ["tale"],
+        "there": ["there"],
+        "their": ["their"],
+        "they're": ["they're"],
+        "through": ["through"],
+        "threw": ["threw"],
+        "thru": ["through"],
+        "to": ["to"],
+        "too": ["too"],
+        "two": ["two"],
+        "vain": ["vain"],
+        "vein": ["vein"],
+        "van": ["van"],
+        "waist": ["waist"],
+        "waste": ["waste"],
+        "wait": ["wait"],
+        "weight": ["weight"],
+        "which": ["which"],
+        "witch": ["witch"],
+        "wood": ["wood"],
+        "would": ["would"],
+        "write": ["write"],
+        "right": ["right"],
+        "wrote": ["wrote"],
+        "written": ["written"],
+    }
+    
+    if word_lower in common_mistakes:
+        suggestions = common_mistakes[word_lower]
+    
+    return suggestions
 
 
 def build_correction_message(result: GrammarResult) -> Optional[str]:

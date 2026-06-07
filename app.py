@@ -223,11 +223,11 @@ def api_chat():
         try:
             _update_practice_record(_get_user_id(), scenario_id, has_errors)
         except Exception as db_error:
-            print(f"⚠️ 数据库更新警告: {db_error}")
+            print(f"[WARN] Database update warning: {db_error}")
 
         return jsonify(response.to_dict())
     except Exception as e:
-        print(f"❌ API 错误: {type(e).__name__}: {e}")
+        print(f"[ERROR] API Error: {type(e).__name__}: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Server error", "reply": "Sorry, something went wrong. Please try again!"}), 500

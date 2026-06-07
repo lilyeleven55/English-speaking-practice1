@@ -411,30 +411,81 @@
         bubble.textContent = text;
         msgDiv.appendChild(bubble);
 
-        if (extras.correction || extras.grammar) {
+        const hasErrors = extras.grammar?.has_errors || false;
+        
+        if (hasErrors) {
             const grammarCard = document.createElement("div");
             grammarCard.className = "grammar-card";
             
-            const hasErrors = extras.grammar?.has_errors || false;
             const errorCount = extras.grammar?.error_count || 0;
+            const issues = extras.grammar?.issues || [];
+            
+            let issuesHtml = '';
+            if (issues.length > 0) {
+                issuesHtml = issues.map((issue) => {
+                    const levelConfig = {
+                        'format': { label: '🔤', bg: '#E6F2FF', color: '#1E90FF' },
+                        'word': { label: '🟠', bg: '#FFF3E6', color: '#FF8C00' },
+                        'grammar': { label: '📗', bg: '#E6FFEF', color: '#32CD32' }
+                    };
+                    const config = levelConfig[issue.level] || levelConfig['format'];
+                    return `
+                        <div class="grammar-issue">
+                            <span class="issue-tag" style="background:${config.bg};color:${config.color};">${config.label}</span>
+                            <span class="issue-desc">${issue.description}</span>
+                            ${issue.suggestion && issue.suggestion !== issue.original ? `<span class="issue-arrow">→</span><span class="issue-suggest">${issue.suggestion}</span>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+            
+            const correctedText = extras.correction?.replace(/\*\*/g, '') || '';
+            const encouragement = extras.encouragement || '';
+            
+            const originalText = extras.grammar?.original || '';
+            let finalSentence = '';
+            
+            if (originalText) {
+                finalSentence = originalText;
+                
+                issues.forEach(issue => {
+                    if (issue.original && issue.suggestion && issue.suggestion !== issue.original) {
+                        if (issue.original === '(句末)') {
+                            if (!finalSentence.endsWith('.') && !finalSentence.endsWith('?') && !finalSentence.endsWith('!')) {
+                                finalSentence += issue.suggestion;
+                            }
+                        } else {
+                            const regex = new RegExp(issue.original, 'gi');
+                            finalSentence = finalSentence.replace(regex, issue.suggestion);
+                        }
+                    }
+                });
+            }
             
             grammarCard.innerHTML = `
                 <div class="grammar-header">
-                    <span class="grammar-icon">📝</span>
+                    <span class="grammar-icon">✏️</span>
                     <span class="grammar-title">Grammar Feedback</span>
+                    <span class="grammar-error-count">共${errorCount}处错误</span>
+                    <button class="apply-correction-btn" onclick="applyCorrection('${finalSentence.replace(/'/g, "\\'")}')">📋 一键填入</button>
+                    <span class="grammar-toggle" onclick="toggleGrammarCard(this.parentElement.parentElement)">▲</span>
                 </div>
                 <div class="grammar-content">
-                    <p class="original-text">${extras.grammar?.original || text}</p>
-                    <p class="${hasErrors ? 'error-text' : 'success-text'}">
-                        ${hasErrors ? `❌ ${errorCount} error(s) found` : '✓ Correct sentence'}
-                    </p>
-                    ${extras.correction ? `<p class="correction-text">${extras.correction.replace(/\*\*/g, '')}</p>` : ''}
+                    ${issuesHtml}
+                    ${finalSentence && originalText ? `
+                    <div class="grammar-suggestion">
+                        <span class="suggestion-original">${originalText}</span>
+                        <span class="suggestion-arrow">→</span>
+                        <span class="suggestion-corrected">${finalSentence}</span>
+                    </div>
+                    ` : ''}
+                    ${encouragement ? `
+                    <div class="grammar-encouragement">💬 ${encouragement}</div>
+                    ` : ''}
                 </div>
             `;
             msgDiv.appendChild(grammarCard);
-        }
-
-        if (extras.encouragement) {
+        } else if (extras.encouragement) {
             const card = document.createElement("div");
             card.className = "encourage-card";
             card.innerHTML = `<span class="encourage-icon">💪</span> ${extras.encouragement}`;
@@ -524,11 +575,20 @@
 
     function toggleRecording() {
         if (isRecording) {
-            recognition.stop();
+            try {
+                recognition.stop();
+            } catch (e) {
+                console.warn("Error stopping recognition:", e);
+            }
             isRecording = false;
         } else {
-            recognition.start();
-            isRecording = true;
+            try {
+                recognition.start();
+                isRecording = true;
+            } catch (e) {
+                console.error("Error starting recognition:", e);
+                isRecording = false;
+            }
         }
         updateMicButton();
     }
@@ -922,6 +982,7 @@
         }
 
         isCustomScenario = true;
+        currentScenario = 'custom';
         customScenarioData = {
             id: 'custom',
             name: name,
@@ -947,3 +1008,23 @@
     init();
     initCustomScenario();
 })();
+
+function toggleGrammarCard(card) {
+    const content = card.querySelector('.grammar-content');
+    const toggle = card.querySelector('.grammar-toggle');
+    if (content.style.display === 'none' || content.style.display === '') {
+        content.style.display = 'block';
+        toggle.textContent = '▼';
+    } else {
+        content.style.display = 'none';
+        toggle.textContent = '▶';
+    }
+}
+
+function applyCorrection(text) {
+    const userInput = document.getElementById('user-input');
+    if (userInput && text) {
+        userInput.value = text;
+        userInput.focus();
+    }
+}
