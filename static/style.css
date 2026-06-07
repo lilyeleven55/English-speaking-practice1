@@ -1294,15 +1294,20 @@ body {
 
 #user-input {
     flex: 1;
+  width: 100%;
+  height: 100%;
     border: none;
     background: transparent;
     font-size: 15px;
-    line-height: 1.5;
+  /* 关键：行高直接设为和你调试的35px一致，让文字垂直居中 */
+  line-height: 35px;
     resize: none;
     outline: none;
-    max-height: 120px;
     font-family: inherit;
     color: var(--text);
+  /* 去掉padding，文字和边框贴合 */
+  padding: 0 12px;
+  margin: 0;
 }
 
 .btn-send {
