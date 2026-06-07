@@ -375,10 +375,20 @@
     }
 
     function addWrongWord(word) {
+        const cleanWord = word.trim().toLowerCase();
+        
+        if (!cleanWord || cleanWord.length < 2) return;
+        if (!/^[a-zA-Z]+$/.test(cleanWord)) return;
+        if (['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 
+            'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+            'would', 'could', 'should', 'may', 'might', 'must', 'can',
+            'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from',
+            'up', 'about', 'into', 'over', 'after'].includes(cleanWord)) return;
+        
         fetch('/api/vocabulary', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ word: word.toLowerCase(), source: '练习' })
+            body: JSON.stringify({ word: cleanWord, source: '练习' })
         }).then(() => renderVocabulary()).catch(() => {});
     }
 
@@ -592,7 +602,12 @@
                 sessionErrorCount++;
                 
                 data.grammar.issues?.forEach(issue => {
-                    if (issue.original) addWrongWord(issue.original);
+                    if (issue.original && issue.original !== issue.suggestion && 
+                        issue.level !== 'format' && 
+                        issue.original !== '(句末)' &&
+                        !/^[^a-zA-Z]+$/.test(issue.original)) {
+                        addWrongWord(issue.original);
+                    }
                 });
             } else {
                 consecutiveCorrect++;
@@ -741,22 +756,40 @@
             const encouragement = extras.encouragement || '';
             
             const originalText = extras.grammar?.original || '';
-            let finalSentence = '';
-            
-            if (originalText) {
+            let finalSentence = extras.grammar?.corrected_text || '';
+
+            // 后端 corrected_text 优先；旧版 API 无该字段时回退到前端拼接
+            if (!finalSentence && originalText) {
                 finalSentence = originalText;
-                
+                const punctuationIssues = [];
+                const otherIssues = [];
+
                 issues.forEach(issue => {
                     if (issue.original && issue.suggestion && issue.suggestion !== issue.original) {
-                        if (issue.original === '(句末)') {
-                            if (!finalSentence.endsWith('.') && !finalSentence.endsWith('?') && !finalSentence.endsWith('!')) {
-                                finalSentence += issue.suggestion;
-                            }
+                        if (issue.original === '(句末)' || issue.original === '(句末无标点)' || issue.level === 'format') {
+                            punctuationIssues.push(issue);
                         } else {
-                            const escaped = issue.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            otherIssues.push(issue);
+                        }
+                    }
+                });
+
+                otherIssues.forEach(issue => {
+                    const escaped = issue.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(escaped, 'i');
+                    finalSentence = finalSentence.replace(regex, issue.suggestion);
+                });
+
+                punctuationIssues.forEach(issue => {
+                    if (issue.original === '(句末)' || issue.original === '(句末无标点)') {
+                        finalSentence = finalSentence.replace(/[,;:]+$/, '');
+                        if (!finalSentence.endsWith('.') && !finalSentence.endsWith('?') && !finalSentence.endsWith('!')) {
+                            finalSentence += issue.suggestion;
+                        }
+                    } else if (issue.level === 'format') {
+                        const escaped = issue.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         const regex = new RegExp(escaped, 'i');
                         finalSentence = finalSentence.replace(regex, issue.suggestion);
-                        }
                     }
                 });
             }
@@ -881,6 +914,9 @@
             }
             isRecording = false;
         } else {
+            SpeechManager.stop();
+            window.speechSynthesis.cancel();
+            
             try {
                 recognition.start();
                 isRecording = true;
@@ -1014,7 +1050,7 @@
         rightPanel.innerHTML = `
             <div class="todo-header">
                 <h3>📝 To Do List</h3>
-                <button id="todo-toggle" class="todo-toggle">◀</button>
+                <button id="todo-toggle" class="todo-toggle">▶</button>
             </div>
             <div class="todo-content">
                 <div class="todo-stats">
@@ -1205,7 +1241,7 @@
         const toggle = document.getElementById('todo-toggle');
         
         panel.classList.toggle('collapsed');
-        toggle.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
+        toggle.textContent = panel.classList.contains('collapsed') ? '◀' : '▶';
     }
     
     let pkSession = null;

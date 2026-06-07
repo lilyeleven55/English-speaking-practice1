@@ -11,6 +11,7 @@ AI 回复引擎 —— 接入智谱 GLM API，支持多轮上下文对话。
 import json
 import os
 import random
+from datetime import datetime
 import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
@@ -75,11 +76,21 @@ def _build_system_prompt(scenario: dict, goals: list = None, goal_progress: int 
         current_goal = goals[goal_progress]
         goal_info = f"\n\nCurrent goal: {current_goal}"
     
+    # 获取当前时间
+    now = datetime.now()
+    current_time = now.strftime("%H:%M")
+    current_date = now.strftime("%B %d, %Y")
+    weekday = now.strftime("%A")
+    
     return (
         f"You are a {scenario['persona']} in an English speaking practice session.\n"
         f"Scenario: {scenario['name_en']}\n"
         f"Description: {scenario['description']}\n"
         f"{goal_info}\n\n"
+        "IMPORTANT - Current time context:\n"
+        f"- Today's date: {current_date} ({weekday})\n"
+        f"- Current time: {current_time}\n"
+        "- When user asks about time or date, use the ACTUAL current time/date above.\n\n"
         "Role: Act as a real person in this scenario.\n\n"
         "Requirements:\n"
         "1. Maintain conversation context naturally.\n"

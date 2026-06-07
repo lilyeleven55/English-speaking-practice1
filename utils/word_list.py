@@ -563,8 +563,20 @@ def _closest_word(word, max_distance=2):
             best_dist = dist
             best = known
             if dist == 1:
+                # 当距离为1时，检查是否有更好的匹配（包含原词作为子序列）
+                for other in candidates:
+                    if other != known and _levenshtein(word, other) == 1:
+                        # 优先选择包含原词所有字母的候选（子序列匹配）
+                        if _is_subsequence(word, other) and not _is_subsequence(word, best):
+                            best = other
                 break
     return best if best is not None else word
+
+
+def _is_subsequence(small, big):
+    """检查 small 是否是 big 的子序列"""
+    it = iter(big)
+    return all(c in it for c in small)
 
 
 def _levenshtein(a, b):
