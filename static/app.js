@@ -455,8 +455,9 @@
                                 finalSentence += issue.suggestion;
                             }
                         } else {
-                            const regex = new RegExp(issue.original, 'gi');
-                            finalSentence = finalSentence.replace(regex, issue.suggestion);
+                            const escaped = issue.original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(escaped, 'i');
+                        finalSentence = finalSentence.replace(regex, issue.suggestion);
                         }
                     }
                 });
