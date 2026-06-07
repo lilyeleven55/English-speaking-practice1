@@ -138,6 +138,84 @@ _GRAMMAR_RULES = [
 ]
 
 
+# 中文标点到英文标点的映射
+_PUNCTUATION_MAP = {
+    "，": ",",
+    "。": ".",
+    "？": "?",
+    "！": "!",
+    "；": ";",
+    "：": ":",
+    """: '"',
+    """: '"',
+    '‘': "'",
+    '’': "'",
+    "（": "(",
+    "）": ")",
+    "【": "[",
+    "】": "]",
+    "《": "<",
+    "》": ">",
+    "——": "--",
+    "…": "...",
+    "·": ".",
+}
+
+
+def _fix_punctuation(text: str) -> tuple:
+    """
+    Fix punctuation issues in text.
+    
+    Returns:
+        (fixed_text, punctuation_issues): Tuple of corrected text and list of punctuation issues.
+    """
+    issues = []
+    fixed = text
+    has_chinese_punct = False
+    
+    # 1. 检测并替换中文标点
+    for cn_punct, en_punct in _PUNCTUATION_MAP.items():
+        if cn_punct in fixed:
+            has_chinese_punct = True
+            count = fixed.count(cn_punct)
+            fixed = fixed.replace(cn_punct, en_punct)
+            if cn_punct in "，。？！；：":
+                issues.append(
+                    GrammarIssue(
+                        original=cn_punct,
+                        suggestion=en_punct,
+                        explanation=f"中文标点 '{cn_punct}' 应替换为英文标点 '{en_punct}'",
+                        severity="low",
+                        level="format",
+                    )
+                )
+    
+    # 2. 处理句尾标点
+    stripped = fixed.rstrip()
+    if stripped:
+        last_char = stripped[-1]
+        
+        # 句尾没有标点或只有空白时添加句号
+        if last_char not in ".!?\"'):":
+            # 确保不会重复添加标点
+            fixed = stripped + "."
+            if not has_chinese_punct:
+                issues.append(
+                    GrammarIssue(
+                        original="(句末无标点)",
+                        suggestion=".",
+                        explanation="句尾补充英文句号",
+                        severity="low",
+                        level="format",
+                    )
+                )
+        elif has_chinese_punct:
+            # 如果有中文标点被替换，确保句尾只有一个正确标点
+            pass  # 已经在替换步骤中处理了
+    
+    return fixed, issues
+
+
 def check_grammar(text: str) -> GrammarResult:
     """
     Detect common grammar errors in text.
@@ -188,17 +266,9 @@ def check_grammar(text: str) -> GrammarResult:
             )
         )
 
-    # 缺少句末标点
-    if stripped and stripped[-1] not in ".!?":
-        result.issues.append(
-            GrammarIssue(
-                original="(句末)",
-                suggestion=".",
-                explanation="句尾补充句号",
-                severity="low",
-                level="format",
-            )
-        )
+    # 标点符号处理（中文标点替换 + 句尾标点补充）
+    fixed_text, punct_issues = _fix_punctuation(text)
+    result.issues.extend(punct_issues)
 
     words = re.findall(r"\b[a-zA-Z]+\b", text.lower())
     misspelled = unknown(words)
@@ -236,3 +306,20 @@ def build_correction_message(result: GrammarResult) -> Optional[str]:
     if result.error_count > 3:
         lines.append(f"Plus {result.error_count - 3} more suggestions.")
     return "\n".join(lines)
+
+
+def get_corrected_text(text: str) -> str:
+    """
+    Get the corrected version of input text with all fixes applied.
+    
+    Args:
+        text: Original user input.
+    
+    Returns:
+        Corrected text with punctuation fixed.
+    """
+    if not text or not text.strip():
+        return text
+    
+    fixed_text, _ = _fix_punctuation(text)
+    return fixed_text

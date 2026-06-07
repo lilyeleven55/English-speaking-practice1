@@ -26,6 +26,261 @@
     let isCustomScenario = false;
     let customScenarioData = null;
 
+    // ===== 语音管理模块 =====
+    const SpeechManager = {
+        currentUtterance: null,
+        currentMsgElement: null,
+        isPaused: false,
+
+        speak(text, msgElement = null, rate = 0.9) {
+            if (!("speechSynthesis" in window)) return;
+            
+            this.stop();
+            
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = "en-US";
+            utterance.rate = rate;
+            utterance.pitch = 1;
+            
+            this.currentUtterance = utterance;
+            if (msgElement) this.currentMsgElement = msgElement;
+            this.isPaused = false;
+            
+            utterance.onend = () => {
+                this.resetPlayButton(msgElement);
+                this.currentUtterance = null;
+                this.currentMsgElement = null;
+                this.isPaused = false;
+            };
+            
+            utterance.onerror = () => {
+                this.resetPlayButton(msgElement);
+                this.currentUtterance = null;
+                this.currentMsgElement = null;
+                this.isPaused = false;
+            };
+            
+            window.speechSynthesis.speak(utterance);
+        },
+
+        togglePause(msgElement) {
+            if (!this.currentUtterance || this.currentMsgElement !== msgElement) {
+                const text = msgElement?.closest('.message')?.querySelector('.bubble')?.textContent || '';
+                if (text) this.speak(text, msgElement, 0.9);
+                return;
+            }
+            
+            if (this.isPaused) {
+                window.speechSynthesis.resume();
+                this.isPaused = false;
+                this.updatePlayButton(msgElement, true);
+            } else {
+                window.speechSynthesis.pause();
+                this.isPaused = true;
+                this.updatePlayButton(msgElement, false);
+            }
+        },
+
+        speakSlow(text) {
+            this.stop();
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = "en-US";
+            utterance.rate = 0.7;
+            utterance.pitch = 1;
+            window.speechSynthesis.speak(utterance);
+        },
+
+        stop() {
+            window.speechSynthesis.cancel();
+            if (this.currentMsgElement) {
+                this.resetPlayButton(this.currentMsgElement);
+            }
+            this.currentUtterance = null;
+            this.currentMsgElement = null;
+            this.isPaused = false;
+        },
+
+        updatePlayButton(element, isPlaying) {
+            if (!element) return;
+            const btn = element.querySelector('.btn-play');
+            if (btn) btn.textContent = isPlaying ? '⏸️' : '▶️';
+        },
+
+        resetPlayButton(element) {
+            if (!element) return;
+            const btn = element.querySelector('.btn-play');
+            if (btn) btn.textContent = '▶️';
+        },
+
+        speakWord(word) {
+            this.stop();
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(word);
+            utterance.lang = "en-US";
+            utterance.rate = 0.85;
+            utterance.pitch = 1;
+            window.speechSynthesis.speak(utterance);
+        }
+    };
+
+    // ===== 词典API缓存模块 =====
+    const DictionaryCache = {
+        cache: {},
+        
+        async lookup(word) {
+            const cleanWord = word.toLowerCase().trim().replace(/[^a-zA-Z-]/g, '');
+            if (!cleanWord || cleanWord.length < 2) return null;
+            
+            if (this.cache[cleanWord]) {
+                return this.cache[cleanWord];
+            }
+            
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                const response = await fetch(
+                    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(cleanWord)}`,
+                    { signal: controller.signal }
+                );
+                
+                clearTimeout(timeoutId);
+                
+                if (!response.ok) {
+                    this.cache[cleanWord] = { error: true };
+                    return null;
+                }
+                
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    const entry = data[0];
+                    const meanings = entry.meanings || [];
+                    const definitions = [];
+                    meanings.forEach(m => {
+                        (m.definitions || []).slice(0, 2).forEach(d => {
+                            if (d.definition) definitions.push(d.definition);
+                        });
+                    });
+                    
+                    const phonetic = entry.phonetic || 
+                        (entry.phonetics && entry.phonetics.find(p => p.text)?.text) || '';
+                    
+                    const result = {
+                        word: entry.word,
+                        phonetic,
+                        definitions: definitions.slice(0, 3),
+                        error: false
+                    };
+                    
+                    this.cache[cleanWord] = result;
+                    return result;
+                }
+                
+                this.cache[cleanWord] = { error: true };
+                return null;
+            } catch (e) {
+                console.warn('Dictionary API error:', e.message);
+                this.cache[cleanWord] = { error: true };
+                return null;
+            }
+        }
+    };
+
+    // ===== 单词弹窗模块 =====
+    let wordClickDebounce = null;
+    
+    function showWordModal(word, sentence) {
+        if (wordClickDebounce) clearTimeout(wordClickDebounce);
+        wordClickDebounce = setTimeout(async () => {
+            _showWordModalInternal(word, sentence);
+        }, 200);
+    }
+
+    async function _showWordModalInternal(word, sentence) {
+        const existingModal = document.getElementById('word-modal');
+        if (existingModal) existingModal.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'word-modal';
+        modal.className = 'word-modal-overlay';
+        modal.innerHTML = `
+            <div class="word-modal-content">
+                <button class="word-modal-close" onclick="document.getElementById('word-modal').remove()">✕</button>
+                <div class="word-modal-header">
+                    <span class="word-modal-word">${escapeHtml(word)}</span>
+                    <button class="word-modal-speak-btn" title="发音">🔈</button>
+                </div>
+                <div class="word-modal-body">
+                    <div class="word-modal-loading">正在查询释义...</div>
+                </div>
+                ${sentence ? `<div class="word-modal-example"><strong>例句：</strong>"${escapeHtml(sentence)}"</div>` : ''}
+                <div class="word-modal-actions">
+                    <button class="word-modal-add-btn" id="modal-add-vocab">📚 添加到生词本</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const speakBtn = modal.querySelector('.word-modal-speak-btn');
+        speakBtn.addEventListener('click', () => SpeechManager.speakWord(word));
+
+        const addBtn = document.getElementById('modal-add-vocab');
+        addBtn.addEventListener('click', () => addToVocabularyFromModal(word, sentence, modal));
+
+        const dictResult = await DictionaryCache.lookup(word);
+        const bodyEl = modal.querySelector('.word-modal-body');
+
+        if (dictResult && !dictResult.error && dictResult.definitions.length > 0) {
+            bodyEl.innerHTML = `
+                ${dictResult.phonetic ? `<div class="word-modal-phonetic">${escapeHtml(dictResult.phonetic)}</div>` : ''}
+                <div class="word-modal-definitions">
+                    ${dictResult.definitions.map(d => `<p>${escapeHtml(d)}</p>`).join('')}
+                </div>
+            `;
+        } else {
+            bodyEl.innerHTML = '<div class="word-modal-no-def">暂无释义</div>';
+        }
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.remove();
+        });
+    }
+
+    async function addToVocabularyFromModal(word, sentence, modal) {
+        try {
+            const res = await fetch('/api/vocabulary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    word,
+                    definition: '',
+                    example: sentence || '',
+                    source: '对话学习'
+                })
+            });
+            
+            const result = await res.json();
+            
+            if (result.success === false && result.error?.includes('已存在')) {
+                alert('该单词已在生词本中！');
+            } else if (result.id || result.word) {
+                const btn = document.getElementById('modal-add-vocab');
+                if (btn) {
+                    btn.textContent = '✅ 已添加';
+                    btn.disabled = true;
+                    btn.style.opacity = '0.6';
+                }
+                renderVocabulary();
+            }
+        } catch (e) {
+            console.error('Add vocabulary error:', e);
+            alert('添加失败，请重试');
+        }
+    }
+
     // Easter egg keywords
     const EASTER_EGGS = {
         birthday: ["birthday", "happy birthday", "happy bday"],
@@ -199,6 +454,7 @@
         initSpeechRecognition();
         checkStreak();
         initSidebar();
+        initTodoPanel();
     }
 
     async function loadScenarios() {
@@ -426,8 +682,32 @@
 
         const bubble = document.createElement("div");
         bubble.className = "bubble";
-        bubble.textContent = text;
+        
+        if (role === 'ai') {
+            bubble.innerHTML = makeWordsClickable(text);
+            bubble.addEventListener('click', handleWordClick);
+        } else {
+            bubble.textContent = text;
+        }
+        
         msgDiv.appendChild(bubble);
+
+        if (role === 'ai') {
+            const audioControls = document.createElement('div');
+            audioControls.className = 'audio-controls';
+            audioControls.innerHTML = `
+                <button class="btn-play" title="播放/暂停">▶️</button>
+                <button class="btn-slow" title="慢速播放 (0.7x)">🐢</button>
+            `;
+            
+            const playBtn = audioControls.querySelector('.btn-play');
+            const slowBtn = audioControls.querySelector('.btn-slow');
+            
+            playBtn.addEventListener('click', () => SpeechManager.togglePause(audioControls));
+            slowBtn.addEventListener('click', () => SpeechManager.speakSlow(text));
+            
+            msgDiv.appendChild(audioControls);
+        }
 
         const hasErrors = extras.grammar?.has_errors || false;
         
@@ -619,6 +899,23 @@
         }
     }
 
+    function makeWordsClickable(text) {
+        return text.replace(/\b([a-zA-Z]{2,})\b/g, '<span class="clickable-word" data-word="$1">$1</span>');
+    }
+
+    function handleWordClick(e) {
+        const wordEl = e.target.closest('.clickable-word');
+        if (!wordEl) return;
+        
+        e.stopPropagation();
+        
+        const word = wordEl.dataset.word;
+        const bubble = wordEl.closest('.bubble');
+        const sentence = bubble ? bubble.textContent : '';
+        
+        showWordModal(word, sentence);
+    }
+
     function speakText(text) {
         if (!("speechSynthesis" in window)) {
             console.log("Text-to-speech not supported");
@@ -703,6 +1000,212 @@
         renderBadges();
         renderVocabulary();
         initPKSession();
+    }
+
+    // ===== 待办清单模块 =====
+    const TODO_STORAGE_KEY = 'todo_list';
+    let todoItems = [];
+
+    function initTodoPanel() {
+        const rightPanel = document.createElement('div');
+        rightPanel.className = 'right-panel';
+        rightPanel.id = 'right-panel';
+        
+        rightPanel.innerHTML = `
+            <div class="todo-header">
+                <button id="todo-toggle" class="todo-toggle">◀</button>
+                <h3>📝 To Do List</h3>
+            </div>
+            <div class="todo-content">
+                <div class="todo-stats">
+                    <span>共 <span class="todo-count" id="todo-total-count">0</span> 项</span>
+                    <span>已完成 <span class="todo-count" id="todo-completed-count">0</span> 项</span>
+                </div>
+                <div class="todo-input-area">
+                    <input type="text" class="todo-input" id="todo-input" placeholder="添加新待办..." maxlength="100">
+                    <button class="todo-add-btn" id="todo-add-btn" title="添加">+</button>
+                </div>
+                <ul class="todo-list" id="todo-list"></ul>
+            </div>
+        `;
+        
+        const app = document.querySelector('.app');
+        app.appendChild(rightPanel);
+        
+        document.getElementById('todo-add-btn').addEventListener('click', addTodo);
+        document.getElementById('todo-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addTodo();
+        });
+        
+        document.getElementById('todo-toggle').addEventListener('click', toggleTodoPanel);
+        
+        document.getElementById('todo-list').addEventListener('click', handleTodoClick);
+        document.getElementById('todo-list').addEventListener('change', handleTodoChange);
+        
+        loadTodos();
+        renderTodos();
+    }
+    
+    function loadTodos() {
+        try {
+            const saved = localStorage.getItem(TODO_STORAGE_KEY);
+            if (saved) {
+                todoItems = JSON.parse(saved);
+            }
+        } catch (e) {
+            console.error('Failed to load todos:', e);
+            todoItems = [];
+        }
+    }
+    
+    function saveTodos() {
+        try {
+            localStorage.setItem(TODO_STORAGE_KEY, JSON.stringify(todoItems));
+        } catch (e) {
+            console.error('Failed to save todos:', e);
+        }
+    }
+    
+    function addTodo() {
+        const input = document.getElementById('todo-input');
+        const text = input.value.trim();
+        
+        if (!text) return;
+        
+        const newTodo = {
+            id: Date.now().toString(36) + Math.random().toString(36).substr(2),
+            text: text,
+            completed: false,
+            createdAt: new Date().toISOString()
+        };
+        
+        todoItems.unshift(newTodo);
+        saveTodos();
+        renderTodos();
+        
+        input.value = '';
+        input.focus();
+    }
+    
+    function deleteTodo(id) {
+        todoItems = todoItems.filter(item => item.id !== id);
+        saveTodos();
+        renderTodos();
+    }
+    
+    function toggleTodo(id) {
+        const item = todoItems.find(t => t.id === id);
+        if (item) {
+            item.completed = !item.completed;
+            saveTodos();
+            renderTodos();
+        }
+    }
+    
+    function startEditTodo(id) {
+        const li = document.querySelector(`.todo-item[data-id="${id}"]`);
+        if (!li) return;
+        
+        const item = todoItems.find(t => t.id === id);
+        if (!item) return;
+        
+        const textWrapper = li.querySelector('.todo-text-wrapper');
+        const currentText = item.text;
+        
+        textWrapper.innerHTML = `<input type="text" class="todo-text-input" value="${escapeHtml(currentText)}">`;
+        const input = textWrapper.querySelector('.todo-text-input');
+        input.focus();
+        input.select();
+        
+        const finishEdit = () => {
+            const newText = input.value.trim();
+            if (newText && newText !== currentText) {
+                item.text = newText;
+                saveTodos();
+            }
+            renderTodos();
+        };
+        
+        input.addEventListener('blur', finishEdit);
+        input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                input.blur();
+            }
+        });
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                renderTodos();
+            }
+        });
+    }
+    
+    function handleTodoClick(e) {
+        const target = e.target;
+        const li = target.closest('.todo-item');
+        if (!li) return;
+        
+        const id = li.dataset.id;
+        
+        if (target.classList.contains('todo-delete-btn')) {
+            deleteTodo(id);
+        } else if (target.classList.contains('todo-edit-btn')) {
+            startEditTodo(id);
+        }
+    }
+    
+    function handleTodoChange(e) {
+        if (e.target.classList.contains('todo-checkbox')) {
+            const li = e.target.closest('.todo-item');
+            if (li) {
+                toggleTodo(li.dataset.id);
+            }
+        }
+    }
+    
+    function renderTodos() {
+        const list = document.getElementById('todo-list');
+        if (!list) return;
+        
+        const totalCount = todoItems.length;
+        const completedCount = todoItems.filter(t => t.completed).length;
+        
+        const totalEl = document.getElementById('todo-total-count');
+        const completedEl = document.getElementById('todo-completed-count');
+        if (totalEl) totalEl.textContent = totalCount;
+        if (completedEl) completedEl.textContent = completedCount;
+        
+        if (totalCount === 0) {
+            list.innerHTML = `
+                <li class="todo-empty">
+                    <div class="todo-empty-icon">📋</div>
+                    <div>暂无待办事项</div>
+                    <div style="font-size: 11px; margin-top: 4px;">添加一个新任务开始吧！</div>
+                </li>
+            `;
+            return;
+        }
+        
+        list.innerHTML = todoItems.map(item => `
+            <li class="todo-item ${item.completed ? 'completed' : ''}" data-id="${item.id}">
+                <input type="checkbox" class="todo-checkbox" ${item.completed ? 'checked' : ''}>
+                <div class="todo-text-wrapper">
+                    <span class="todo-text">${escapeHtml(item.text)}</span>
+                </div>
+                <div class="todo-actions">
+                    <button class="todo-edit-btn" title="编辑">✏️</button>
+                    <button class="todo-delete-btn" title="删除">🗑️</button>
+                </div>
+            </li>
+        `).join('');
+    }
+    
+    function toggleTodoPanel() {
+        const panel = document.getElementById('right-panel');
+        const toggle = document.getElementById('todo-toggle');
+        
+        panel.classList.toggle('collapsed');
+        toggle.textContent = panel.classList.contains('collapsed') ? '▶' : '◀';
     }
     
     let pkSession = null;
@@ -939,7 +1442,10 @@
         _vocabCache.forEach(item => {
             html += `
                 <div class="vocab-item" data-id="${item.id}">
-                    <div class="vocab-word">${escapeHtml(item.word)}</div>
+                    <div class="vocab-word-row">
+                        <span class="vocab-word">${escapeHtml(item.word)}</span>
+                        <button class="vocab-speak-btn" onclick="speakVocabWord('${escapeHtml(item.word)}')" title="发音">🔊</button>
+                    </div>
                     ${item.definition ? `<div class="vocab-def">${escapeHtml(item.definition)}</div>` : ''}
                     ${item.example ? `<div class="vocab-example">"${escapeHtml(item.example)}"</div>` : ''}
                     <div class="vocab-item-actions">
@@ -1192,6 +1698,7 @@
     window.submitEditVocab = submitEditVocab;
     window.editVocabWord = editVocabWord;
     window.deleteVocabWord = deleteVocabWord;
+    window.speakVocabWord = (word) => SpeechManager.speakWord(word);
 
     init();
     initCustomScenario();
