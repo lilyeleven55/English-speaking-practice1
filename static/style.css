@@ -1667,7 +1667,7 @@ body {
 
 /* ===== 右侧待办清单面板 ===== */
 .right-panel {
-    width: 240px;
+    width: 280px;
     background: var(--primary-light);
     border-left: 1px solid var(--border);
     display: flex;
