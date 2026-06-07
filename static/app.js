@@ -25,6 +25,8 @@
     let sessionErrorCount = 0;
     let isCustomScenario = false;
     let customScenarioData = null;
+    let calendarDisplayYear = null;
+    let calendarDisplayMonth = null;
 
     // ===== 语音管理模块 =====
     const SpeechManager = {
@@ -1383,12 +1385,24 @@
         const calendar = document.getElementById('calendar-grid');
         const streak = loadStreakData();
         const today = new Date();
-        const currentMonth = today.getMonth();
-        const currentYear = today.getFullYear();
+        
+        if (calendarDisplayYear === null || calendarDisplayMonth === null) {
+            calendarDisplayYear = today.getFullYear();
+            calendarDisplayMonth = today.getMonth();
+        }
+        
+        const currentMonth = calendarDisplayMonth;
+        const currentYear = calendarDisplayYear;
         const firstDay = new Date(currentYear, currentMonth, 1);
         const lastDay = new Date(currentYear, currentMonth + 1, 0);
         
-        let html = `<div class="calendar-month-header">${currentYear}年${currentMonth + 1}月</div>`;
+        let html = `
+            <div class="calendar-month-header">
+                <button class="calendar-nav-btn" onclick="navigateCalendar(-1)" title="上个月">&lt;</button>
+                <span class="calendar-month-title">${currentYear}年${currentMonth + 1}月</span>
+                <button class="calendar-nav-btn" onclick="navigateCalendar(1)" title="下个月">&gt;</button>
+            </div>
+        `;
         html += '<div class="calendar-header">';
         const days = ['日', '一', '二', '三', '四', '五', '六'];
         days.forEach(d => html += `<div class="calendar-day-name">${d}</div>`);
@@ -1403,7 +1417,7 @@
         for (let i = 1; i <= lastDay.getDate(); i++) {
             const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
             const record = streak.records[dateStr];
-            const isToday = i === today.getDate();
+            const isToday = currentYear === today.getFullYear() && currentMonth === today.getMonth() && i === today.getDate();
             
             let className = 'calendar-day';
             let tooltip = '';
@@ -1429,6 +1443,20 @@
         html += '</div>';
         html += `<div class="calendar-summary">本月活跃 ${activeDays} 天（完成 ${completedDays} 天）</div>`;
         calendar.innerHTML = html;
+    }
+    
+    function navigateCalendar(direction) {
+        calendarDisplayMonth += direction;
+        
+        if (calendarDisplayMonth < 0) {
+            calendarDisplayMonth = 11;
+            calendarDisplayYear--;
+        } else if (calendarDisplayMonth > 11) {
+            calendarDisplayMonth = 0;
+            calendarDisplayYear++;
+        }
+        
+        renderCalendar();
     }
 
     function renderBadges() {
@@ -1735,6 +1763,7 @@
     window.editVocabWord = editVocabWord;
     window.deleteVocabWord = deleteVocabWord;
     window.speakVocabWord = (word) => SpeechManager.speakWord(word);
+    window.navigateCalendar = navigateCalendar;
 
     init();
     initCustomScenario();
